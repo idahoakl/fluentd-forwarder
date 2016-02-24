@@ -99,6 +99,31 @@ func (c *forwardClient) decodeRecordSet(tag []byte, entries []interface{}) (Flue
 	}, nil
 }
 
+func (c *forwardClient) createFluentRecordSet(values []interface{}, tag []byte, timestamp uint64) ([]FluentRecordSet, error) {
+	var retval []FluentRecordSet
+	data, ok := values[2].(map[string]interface{})
+	if !ok {
+		return nil, errors.New("Failed to decode data field")
+	}
+	c.logger.Debug("timestamp: %d", timestamp);
+	c.logger.Debug("tag: %s", tag);
+	c.logger.Debug("data: %d", data);
+
+	retval = []FluentRecordSet{
+		{
+			Tag: string(tag), // XXX: byte => rune
+			Records: []TinyFluentRecord{
+				{
+					Timestamp: timestamp,
+					Data:      data,
+				},
+			},
+		},
+	}
+
+	return retval, nil
+}
+
 func (c *forwardClient) decodeEntries() ([]FluentRecordSet, error) {
 	v := []interface{}{nil, nil, nil}
 	err := c.dec.Decode(&v)
@@ -113,39 +138,22 @@ func (c *forwardClient) decodeEntries() ([]FluentRecordSet, error) {
 	var retval []FluentRecordSet
 	switch timestamp_or_entries := v[1].(type) {
 	case uint64:
-		timestamp := timestamp_or_entries
-		data, ok := v[2].(map[string]interface{})
-		if !ok {
-			return nil, errors.New("Failed to decode data field")
+		retval, err = c.createFluentRecordSet(v, tag, timestamp_or_entries);
+
+		if(err != nil) {
+			return nil, err
 		}
-		coerceInPlace(data)
-		retval = []FluentRecordSet{
-			{
-				Tag: string(tag), // XXX: byte => rune
-				Records: []TinyFluentRecord{
-					{
-						Timestamp: timestamp,
-						Data:      data,
-					},
-				},
-			},
+	case int64:
+		retval, err = c.createFluentRecordSet(v, tag, uint64(timestamp_or_entries));
+
+		if(err != nil) {
+			return nil, err
 		}
 	case float64:
-		timestamp := uint64(timestamp_or_entries)
-		data, ok := v[2].(map[string]interface{})
-		if !ok {
-			return nil, errors.New("Failed to decode data field")
-		}
-		retval = []FluentRecordSet{
-			{
-				Tag: string(tag), // XXX: byte => rune
-				Records: []TinyFluentRecord{
-					{
-						Timestamp: timestamp,
-						Data:      data,
-					},
-				},
-			},
+		retval, err = c.createFluentRecordSet(v, tag, uint64(timestamp_or_entries));
+
+		if(err != nil) {
+			return nil, err
 		}
 	case []interface{}:
 		if !ok {
@@ -179,6 +187,9 @@ func (c *forwardClient) decodeEntries() ([]FluentRecordSet, error) {
 		return nil, errors.New(fmt.Sprintf("Unknown type: %t", timestamp_or_entries))
 	}
 	atomic.AddInt64(&c.input.entries, int64(len(retval)))
+
+	c.logger.Debug("DEBUG - FluentRecordSet: %s", retval);
+
 	return retval, nil
 }
 

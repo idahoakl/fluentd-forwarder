@@ -1,7 +1,7 @@
 package main
 
 import (
-	fluentd_forwarder "github.com/fluent/fluentd-forwarder"
+	fluentd_forwarder "github.com/idahoakl/fluentd-forwarder"
 	"os"
 	"os/signal"
 )
